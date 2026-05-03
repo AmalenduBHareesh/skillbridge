@@ -1,6 +1,6 @@
-Full Name: [YOUR FULL NAME]
-Email: [YOUR EMAIL]
-Phone: [YOUR PHONE NUMBER]
-GitHub: https://github.com/[YOUR-USERNAME]
+Full Name: Amalendu B Hareesh
+Email: amalenduhareesh3@gmail.com
+Phone: 9496201063
+GitHub: https://github.com/AmalenduBHareesh
 
 Most challenging part: Implementing the dual-token flow for the Monitoring Officer role — correctly scoping the second token and ensuring the standard JWT is rejected at the monitoring endpoint required careful dependency design.

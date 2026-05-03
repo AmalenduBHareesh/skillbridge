@@ -1,244 +1,237 @@
 # SkillBridge Attendance API
 
-Backend REST API for a fictional state-level skilling programme. Built with FastAPI, PostgreSQL (Neon), and deployed on Render/Railway.
+A REST API backend for a fictional state-level skilling programme called **SkillBridge**. Built with FastAPI, PostgreSQL (Neon), JWT authentication, and role-based access control across 5 user roles.
 
 ---
 
-## 1. Live API Base URL
+## Live API
 
 ```
-https://YOUR-APP-NAME.onrender.com
+https://skillbridge-api-iuc9.onrender.com
 ```
 
-> Replace this with your actual URL after deployment. All curl examples below use `$BASE` as a placeholder.
-
-```bash
-export BASE=https://YOUR-APP-NAME.onrender.com
+Swagger UI (test all endpoints in browser):
+```
+https://skillbridge-api-iuc9.onrender.com/docs
 ```
 
 ---
 
-## 2. Local Setup (from scratch)
+## Local Setup (from scratch)
 
-Assumes Python 3.10+ and pip are installed.
+Assumes Python and pip are installed. Nothing else needed.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR-USERNAME/skillbridge.git
+git clone https://github.com/AmalenduBHareesh/skillbridge.git
 cd skillbridge
 
-# 2. Create a virtual environment
+# 2. Create virtual environment
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Mac/Linux
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Copy and fill in .env
+# 4. Set up environment variables
 cp .env.example .env
-# Edit .env — set DATABASE_URL to your Neon connection string
-# and generate a SECRET_KEY:
-python -c "import secrets; print(secrets.token_hex(32))"
+# Edit .env:
+#   DATABASE_URL → your PostgreSQL connection string (use postgresql+pg8000:// prefix)
+#   SECRET_KEY   → run: python -c "import secrets; print(secrets.token_hex(32))"
 
-# 5. Create tables + seed data
+# 5. Seed the database
 python scripts/seed.py
 
 # 6. Run the server
 uvicorn src.main:app --reload
+# or on Windows: python -m uvicorn src.main:app --reload
 
-# API is now at http://localhost:8000
-# Swagger docs at http://localhost:8000/docs
+# API runs at   → http://localhost:8000
+# Swagger UI at → http://localhost:8000/docs
 ```
+
+> **Note on DATABASE_URL:** This project uses `pg8000` (pure Python PostgreSQL driver).
+> Your connection string must start with `postgresql+pg8000://` not `postgresql://`
 
 ---
 
-## 3. Test Accounts (all seeded by scripts/seed.py)
+## Test Accounts
 
-| Role               | Email                            | Password          |
-|--------------------|----------------------------------|-------------------|
-| student            | student1@skillbridge.test        | student_pass123   |
-| trainer            | trainer1@skillbridge.test        | trainer_pass123   |
-| institution        | admin_kzd@skillbridge.test       | admin_pass123     |
-| programme_manager  | pm@skillbridge.test              | pm_pass123        |
-| monitoring_officer | monitor@skillbridge.test         | monitor_pass123   |
+All five roles are created by `scripts/seed.py`:
+
+| Role | Email | Password |
+|---|---|---|
+| student | student1@skillbridge.test | student_pass123 |
+| trainer | trainer1@skillbridge.test | trainer_pass123 |
+| institution | admin_kzd@skillbridge.test | admin_pass123 |
+| programme_manager | pm@skillbridge.test | pm_pass123 |
+| monitoring_officer | monitor@skillbridge.test | monitor_pass123 |
 
 ---
 
-## 4. Sample curl Commands
-
-### Auth
+## Running Tests
 
 ```bash
-# Signup
-curl -X POST $BASE/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"new@test.com","password":"pass123","role":"student"}'
-
-# Login (get TOKEN)
-TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"student1@skillbridge.test","password":"student_pass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-echo "Student token: $TOKEN"
-
-# Get monitoring-scoped token (2-step)
-# Step 1: Login as monitoring officer
-MO_TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"monitor@skillbridge.test","password":"monitor_pass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-# Step 2: Exchange for scoped token
-SCOPED=$(curl -s -X POST $BASE/auth/monitoring-token \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $MO_TOKEN" \
-  -d '{"key":"monitoring-secret-api-key-2024"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-echo "Monitoring scoped token: $SCOPED"
+python -m pytest tests/ -v
 ```
 
-### Batches
+Expected: **7 passed**. Tests use SQLite in memory — no external database needed.
+
+| # | Test | Covers |
+|---|---|---|
+| 1 | test_student_signup_and_login_returns_valid_jwt | Signup + login + JWT claims verified |
+| 2 | test_trainer_creates_session | Session creation with RBAC check |
+| 3 | test_student_marks_own_attendance | Attendance marking + enrollment check |
+| 4 | test_post_to_monitoring_attendance_returns_405 | 405 on non-GET verb |
+| 5 | test_protected_endpoint_without_token_returns_401 | 401 with missing token |
+| 6 | test_student_cannot_create_session | Wrong role → 403 |
+| 7 | test_student_cannot_mark_attendance_for_unenrolled_session | Unenrolled student → 403 |
+
+---
+
+## API Endpoints
+
+| Method | Path | Role Required |
+|---|---|---|
+| POST | /auth/signup | All |
+| POST | /auth/login | All |
+| POST | /auth/monitoring-token | monitoring_officer |
+| POST | /batches | trainer / institution |
+| POST | /batches/{id}/invite | trainer |
+| POST | /batches/join | student |
+| POST | /sessions | trainer |
+| POST | /attendance/mark | student |
+| GET | /sessions/{id}/attendance | trainer |
+| GET | /batches/{id}/summary | institution |
+| GET | /institutions/{id}/summary | programme_manager |
+| GET | /programme/summary | programme_manager |
+| GET | /monitoring/attendance | monitoring_officer (scoped token) |
+
+---
+
+## Sample curl Commands
+
+> On Windows PowerShell use `Invoke-RestMethod` instead of curl (see examples below)
+
+### Login and get token
 
 ```bash
-# Create batch (trainer/institution)
-TRAINER_TOKEN=$(curl -s -X POST $BASE/auth/login \
+# Linux/Mac
+curl -X POST https://skillbridge-api-iuc9.onrender.com/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"trainer1@skillbridge.test","password":"trainer_pass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  -d '{"email":"student1@skillbridge.test","password":"student_pass123"}'
+```
 
-curl -X POST $BASE/batches \
+```powershell
+# Windows PowerShell
+Invoke-RestMethod -Method POST -Uri "https://skillbridge-api-iuc9.onrender.com/auth/login" -ContentType "application/json" -Body '{"email":"student1@skillbridge.test","password":"student_pass123"}'
+```
+
+### Signup
+```bash
+curl -X POST https://skillbridge-api-iuc9.onrender.com/auth/signup \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TRAINER_TOKEN" \
+  -d '{"name":"Test User","email":"test@example.com","password":"pass123","role":"student"}'
+```
+
+### Monitoring Officer — two-step token flow
+
+```bash
+# Step 1: Login as monitoring officer → get standard token
+curl -X POST https://skillbridge-api-iuc9.onrender.com/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"monitor@skillbridge.test","password":"monitor_pass123"}'
+
+# Step 2: Exchange standard token + API key → get scoped monitoring token
+curl -X POST https://skillbridge-api-iuc9.onrender.com/auth/monitoring-token \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer STANDARD_TOKEN_FROM_STEP_1" \
+  -d '{"key":"monitoring-secret-api-key-2024"}'
+
+# Step 3: Use scoped token on monitoring endpoint
+curl https://skillbridge-api-iuc9.onrender.com/monitoring/attendance \
+  -H "Authorization: Bearer SCOPED_TOKEN_FROM_STEP_2"
+```
+
+### Create a batch (trainer)
+```bash
+curl -X POST https://skillbridge-api-iuc9.onrender.com/batches \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TRAINER_TOKEN" \
   -d '{"name":"New Batch","institution_id":1}'
+```
 
-# Create invite for batch 1
-curl -X POST $BASE/batches/1/invite \
+### Generate invite (trainer)
+```bash
+curl -X POST https://skillbridge-api-iuc9.onrender.com/batches/1/invite \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TRAINER_TOKEN" \
+  -H "Authorization: Bearer YOUR_TRAINER_TOKEN" \
   -d '{"expires_at":"2025-12-31T23:59:59Z"}'
-
-# Student joins batch using token (replace TOKEN-HERE with invite token from above)
-curl -X POST $BASE/batches/join \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $STUDENT_TOKEN" \
-  -d '{"token":"TOKEN-HERE"}'
 ```
 
-### Sessions
-
+### Student joins batch
 ```bash
-# Create session
-curl -X POST $BASE/sessions \
+curl -X POST https://skillbridge-api-iuc9.onrender.com/batches/join \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TRAINER_TOKEN" \
+  -H "Authorization: Bearer YOUR_STUDENT_TOKEN" \
+  -d '{"token":"INVITE_TOKEN"}'
+```
+
+### Create session (trainer)
+```bash
+curl -X POST https://skillbridge-api-iuc9.onrender.com/sessions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TRAINER_TOKEN" \
   -d '{"batch_id":1,"title":"Python Basics","date":"2025-06-01","start_time":"09:00","end_time":"11:00"}'
-
-# Get attendance for session 1
-curl $BASE/sessions/1/attendance \
-  -H "Authorization: Bearer $TRAINER_TOKEN"
 ```
 
-### Attendance
-
+### Mark attendance (student)
 ```bash
-# Mark attendance (student)
-curl -X POST $BASE/attendance/mark \
+curl -X POST https://skillbridge-api-iuc9.onrender.com/attendance/mark \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $STUDENT_TOKEN" \
+  -H "Authorization: Bearer YOUR_STUDENT_TOKEN" \
   -d '{"session_id":1,"status":"present"}'
 ```
 
-### Summaries
-
+### Get session attendance (trainer)
 ```bash
-ADMIN_TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin_kzd@skillbridge.test","password":"admin_pass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-PM_TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"pm@skillbridge.test","password":"pm_pass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-# Batch summary (institution role)
-curl $BASE/batches/1/summary -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Institution summary (programme manager)
-curl $BASE/institutions/1/summary -H "Authorization: Bearer $PM_TOKEN"
-
-# Programme-wide summary
-curl $BASE/programme/summary -H "Authorization: Bearer $PM_TOKEN"
-
-# Monitoring endpoint (scoped token required)
-curl $BASE/monitoring/attendance -H "Authorization: Bearer $SCOPED"
+curl https://skillbridge-api-iuc9.onrender.com/sessions/1/attendance \
+  -H "Authorization: Bearer YOUR_TRAINER_TOKEN"
 ```
 
----
+### Batch summary (institution)
+```bash
+curl https://skillbridge-api-iuc9.onrender.com/batches/1/summary \
+  -H "Authorization: Bearer YOUR_INSTITUTION_TOKEN"
+```
 
-## 5. Schema Decisions
+### Institution summary (programme manager)
+```bash
+curl https://skillbridge-api-iuc9.onrender.com/institutions/1/summary \
+  -H "Authorization: Bearer YOUR_PM_TOKEN"
+```
 
-### batch_trainers (many-to-many)
-A batch can have multiple trainers and a trainer can be in multiple batches. Using a join table (rather than a FK on `batches`) captures this without data duplication. The composite PK `(batch_id, trainer_id)` prevents duplicate assignments.
-
-### batch_invites
-Each invite is a UUID token that is single-use (`used` boolean) and time-limited (`expires_at`). Single-use prevents token sharing — each student must get their own invite. The trainer controls expiry, making short-lived invites possible for time-sensitive enrollment windows.
-
-### Dual-token for Monitoring Officer
-The monitoring officer has read-only but extremely broad access (all data, all institutions). To defend this, we require two factors:
-1. Standard JWT (proves identity via email/password)  
-2. Scoped monitoring token (proves possession of an API key + has 1-hour expiry vs 24 hours)
-
-The scoped token carries `"type": "monitoring"` as a claim. The `GET /monitoring/attendance` dependency explicitly rejects any token without this claim, so a stolen standard JWT cannot access monitoring endpoints.
-
-### Why SQLAlchemy ORM over raw SQL?
-Explicit FK relationships let SQLAlchemy catch missing related objects before the DB does (we raise 404 rather than letting a FK violation bubble up as 500). It also makes the codebase more readable and testable.
-
----
-
-## 6. What Is Working / Partial / Skipped
-
-### Fully working
-- All 5 auth flows (signup, login, monitoring token exchange)
-- RBAC enforced on every protected endpoint
-- Batch creation, invite generation, student join-via-token
-- Session creation with trainer-batch assignment check
-- Attendance marking with enrollment verification
-- All summary endpoints (batch, institution, programme, monitoring)
-- 405 on non-GET verbs to `/monitoring/attendance`
-- Seed script (2 institutions, 4 trainers, 15 students, 3 batches, 8 sessions, full attendance)
-- 7 passing pytest tests (5 required + 2 bonus)
-
-### Partially done
-- Alembic migrations: tables are created with `create_all()` on startup. Works fine for a prototype; for production you'd want versioned migrations.
-- Pagination: summary endpoints return all data. A large programme would need `limit`/`offset`.
-
-### Skipped
-- Email verification on signup
-- Rate limiting on login endpoint (brute force protection)
-- Refresh tokens (current tokens are non-revocable until expiry)
-
----
-
-## 7. One Thing I'd Do Differently With More Time
-
-I'd add Alembic migrations from the start. Using `Base.metadata.create_all()` is fine for prototyping but makes schema changes destructive — you either drop all tables or run raw SQL by hand. Alembic gives you versioned, reversible schema migrations, which is how every production app manages schema evolution.
+### Programme-wide summary (programme manager)
+```bash
+curl https://skillbridge-api-iuc9.onrender.com/programme/summary \
+  -H "Authorization: Bearer YOUR_PM_TOKEN"
+```
 
 ---
 
 ## JWT Payload Structure
 
-### Standard access token (all roles)
+### Standard access token (all roles, 24h expiry)
 ```json
 {
   "sub": "42",
   "role": "trainer",
-  "exp": 1714086400,
-  "iat": 1714000000
+  "exp": 1714086400
 }
 ```
 
-### Monitoring-scoped token (monitoring_officer only)
+### Monitoring-scoped token (monitoring_officer only, 1h expiry)
 ```json
 {
   "sub": "7",
@@ -248,21 +241,117 @@ I'd add Alembic migrations from the start. Using `Base.metadata.create_all()` is
 }
 ```
 
-### Token rotation / revocation in production
-In the current implementation, tokens cannot be revoked before expiry — this is the standard JWT tradeoff. To support revocation, I'd maintain a Redis set of revoked `jti` (JWT ID) claims and check it on every request. For the monitoring-scoped token, rotating the `MONITORING_API_KEY` immediately invalidates the ability to mint new scoped tokens (existing ones live out their 1-hour window).
+The `"type": "monitoring"` claim is what separates it from a standard token. The `/monitoring/attendance` dependency explicitly rejects any token missing this claim — so even a valid 24h login token from a monitoring officer cannot access this endpoint. They must always go through the `/auth/monitoring-token` exchange first.
 
-### One security issue in the current implementation
-The `MONITORING_API_KEY` is a static string stored in `.env`. If it leaks, an attacker with any monitoring officer account can mint unlimited scoped tokens. Fix: implement key rotation via a secrets manager (AWS Secrets Manager, HashiCorp Vault) so the key can be changed without redeployment, and add a `jti` claim with a Redis denylist to immediately invalidate outstanding tokens on rotation.
+### Token rotation and revocation in production
+Currently tokens cannot be revoked before expiry (standard JWT tradeoff). In production: add a `jti` (JWT ID) claim, maintain a Redis denylist, and check it on every request. Rotating the `MONITORING_API_KEY` immediately blocks new scoped tokens from being minted.
+
+### One known security issue
+The `MONITORING_API_KEY` is a static string in `.env`. If it leaks, anyone with a monitoring officer account can mint unlimited scoped tokens. Fix with more time: move to a secrets manager (AWS Secrets Manager / Vault) with rotation support and add `jti`-based revocation.
 
 ---
 
-## Deployment Notes (Render)
+## Schema Decisions
 
-1. Push code to GitHub (make sure `.env` is in `.gitignore`)
-2. Create a new Web Service on [render.com](https://render.com)
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-5. Add all env vars from `.env.example` in the Render dashboard under Environment
-6. After first deploy, run the seed script via Render Shell: `python scripts/seed.py`
+### `batch_trainers` (many-to-many join table)
+A batch can have multiple trainers and a trainer can teach multiple batches. A join table captures this without duplication. The composite primary key `(batch_id, trainer_id)` prevents duplicate assignments at the database level.
 
-Neon PostgreSQL: create a free project at [neon.tech](https://neon.tech), copy the connection string, set it as `DATABASE_URL`.
+### `batch_invites`
+Each invite is a UUID token with three properties:
+- **Single-use** — `used` boolean flips to `True` after one student joins, preventing link sharing
+- **Time-limited** — `expires_at` set by the trainer; expired tokens are rejected before any DB write
+- **Traceable** — `created_by` stores the trainer's user ID for audit purposes
+
+### Dual-token for Monitoring Officer
+The monitoring officer has read-only but very wide access — every attendance record across all institutions. Two layers of defence:
+1. **Standard JWT (24h)** — proves identity via email/password
+2. **Scoped monitoring token (1h)** — proves possession of a separate API key; carries `type=monitoring`
+
+A stolen standard JWT cannot access monitoring endpoints without the API key.
+
+### Why `pg8000` instead of `psycopg2`
+`pg8000` is a pure-Python PostgreSQL driver — no C compilation needed. This makes it install cleanly on Python 3.14 (local) and Render's build environment without needing system-level dependencies.
+
+---
+
+## What Is Working / Partial / Skipped
+
+### Fully working
+- All 13 endpoints with correct HTTP status codes
+- RBAC enforced server-side on every protected endpoint
+- JWT auth for all 5 roles (signup, login, token validation)
+- Dual-token flow for Monitoring Officer
+- Batch creation, UUID invite generation, student join via token (single-use + expiry check)
+- Session creation with trainer-to-batch assignment verification
+- Attendance marking with enrollment check (403 if not in batch)
+- Batch, institution, and programme-wide summary endpoints
+- 405 on POST/PUT/PATCH/DELETE to `/monitoring/attendance`
+- Seed script: 2 institutions, 4 trainers, 15 students, 3 batches, 8 sessions, full attendance records
+- 7 passing pytest tests (5 required + 2 bonus)
+- Deployed live on Render with Neon PostgreSQL
+
+### Partially done
+- **Schema migrations:** tables created via `create_all()` at startup. Works for a prototype; production needs Alembic versioned migrations.
+- **Pagination:** summary endpoints return all records. Large programmes need `limit`/`offset`.
+
+### Skipped
+- Email verification on signup
+- Rate limiting on `/auth/login` (brute force protection)
+- Refresh tokens (current JWTs non-revocable until expiry)
+
+---
+
+## One Thing I'd Do Differently
+
+Add **Alembic migrations from day one**. Using `Base.metadata.create_all()` at startup is convenient but makes schema changes destructive in production. Alembic gives versioned, reversible migrations that run safely on a live database with zero downtime.
+
+---
+
+## Project Structure
+
+```
+skillbridge/
+├── CONTACT.txt
+├── README.md
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── render.yaml
+├── scripts/
+│   └── seed.py
+├── src/
+│   ├── main.py
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── security.py
+│   │   └── dependencies.py
+│   ├── db/
+│   │   └── database.py
+│   ├── models/
+│   │   └── models.py
+│   ├── schemas/
+│   │   └── schemas.py
+│   └── routers/
+│       ├── auth.py
+│       ├── batches.py
+│       ├── sessions.py
+│       ├── attendance.py
+│       └── summaries.py
+└── tests/
+    ├── conftest.py
+    └── test_api.py
+```
+
+---
+
+## Stack
+
+| Layer | Choice | Reason |
+|---|---|---|
+| Framework | FastAPI | Auto OpenAPI docs, type-safe, fast to build |
+| ORM | SQLAlchemy 2.x | Explicit FK validation, clean relationship API |
+| Auth | python-jose + bcrypt | Industry-standard JWT + secure password hashing |
+| DB Driver | pg8000 | Pure Python — no C build needed, works on Python 3.14 |
+| Database | Neon (PostgreSQL) | Free managed tier, serverless |
+| Deployment | Render | Free tier, GitHub auto-deploy |
+| Tests | pytest + SQLite | Real DB logic, no external service required for CI |
