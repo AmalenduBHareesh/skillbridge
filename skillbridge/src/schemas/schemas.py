@@ -9,7 +9,7 @@
 
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, validator
 
 
 # ===========================================================================
@@ -24,7 +24,7 @@ class SignupRequest(BaseModel):
     role: str                # one of: student/trainer/institution/programme_manager/monitoring_officer
     institution_id: Optional[int] = None  # required for trainers; optional for others
 
-    @field_validator("role")
+    @validator("role")
     @classmethod
     def role_must_be_valid(cls, v):
         """Reject signup if role is not one of the five allowed values."""
@@ -129,7 +129,7 @@ class AttendanceMarkRequest(BaseModel):
     session_id: int
     status: str   # present / absent / late
 
-    @field_validator("status")
+    @validator("status")
     @classmethod
     def status_must_be_valid(cls, v):
         if v not in {"present", "absent", "late"}:
