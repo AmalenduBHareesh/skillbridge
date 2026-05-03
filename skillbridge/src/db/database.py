@@ -1,66 +1,46 @@
-# src/db/database.py
-#
-# PURPOSE: Set up the SQLAlchemy database connection.
-# Everything database-related (engine creation, session lifecycle) lives here.
+import ssl
+import re
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from src.core.config import settings
 
-# ---------------------------------------------------------------------------
-# ENGINE
-# ---------------------------------------------------------------------------
-# create_engine builds the connection pool.
-# pool_pre_ping=True: before using a connection from the pool, SQLAlchemy
-# sends a lightweight "SELECT 1" to check the connection is still alive.
-# This prevents "connection closed" errors after Neon or Railway idle-timeout.
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    connect_args={
-        "ssl_context":True
-    }
-)
 
-# ---------------------------------------------------------------------------
-# SESSION FACTORY
-# ---------------------------------------------------------------------------
-# SessionLocal is a *class* (a factory). Calling SessionLocal() creates a new
-# database session. Sessions are NOT thread-safe, so we create one per request.
+def _build_engine():
+    db_url = settings.DATABASE_URL
+
+    # Strip ?sslmode=require — pg8000 rejects this URL parameter
+    db_url = re.sub(r'[?&]sslmode=[^&]*', '', db_url).rstrip('?').rstrip('&')
+
+    # Pass SSL via connect_args instead (required for Neon cloud Postgres)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,
+        connect_args={"ssl_context": ssl_ctx},
+    )
+
+
+engine = _build_engine()
+
 SessionLocal = sessionmaker(
-    autocommit=False,   # we control when commits happen
-    autoflush=False,    # don't auto-flush before queries (we flush manually)
+    autocommit=False,
+    autoflush=False,
     bind=engine,
 )
 
-# ---------------------------------------------------------------------------
-# BASE CLASS
-# ---------------------------------------------------------------------------
-# All ORM models will inherit from Base.
-# DeclarativeBase (SQLAlchemy 2.x style) auto-registers the model's table.
+
 class Base(DeclarativeBase):
     pass
 
 
-# ---------------------------------------------------------------------------
-# DEPENDENCY: get_db
-# ---------------------------------------------------------------------------
 def get_db():
-    """
-    FastAPI dependency that yields a database session for one request.
-
-    Usage in a route:
-        @router.get("/something")
-        def my_route(db: Session = Depends(get_db)):
-            ...
-
-    The try/finally guarantees the session is closed even if the route raises
-    an exception. Without this, connections would leak back to the pool in a
-    broken state.
-    """
     db = SessionLocal()
     try:
-        yield db        # FastAPI injects this db into the route function
+        yield db
     finally:
-        db.close()      # always runs, even on exception
+        db.close()
