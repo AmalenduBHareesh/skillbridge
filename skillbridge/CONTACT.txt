@@ -1,0 +1,6 @@
+Full Name: [YOUR FULL NAME]
+Email: [YOUR EMAIL]
+Phone: [YOUR PHONE NUMBER]
+GitHub: https://github.com/[YOUR-USERNAME]
+
+Most challenging part: Implementing the dual-token flow for the Monitoring Officer role — correctly scoping the second token and ensuring the standard JWT is rejected at the monitoring endpoint required careful dependency design.

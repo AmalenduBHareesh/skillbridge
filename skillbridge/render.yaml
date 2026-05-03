@@ -1,0 +1,23 @@
+# render.yaml
+# Optional: Render can auto-read this file to configure your service.
+# If you prefer to configure via the Render dashboard, you can ignore this file.
+
+services:
+  - type: web
+    name: skillbridge-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false        # set manually in Render dashboard (never commit secrets)
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a random value
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: MONITORING_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: MONITORING_API_KEY
+        sync: false        # set manually in Render dashboard
